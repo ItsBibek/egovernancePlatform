@@ -13,16 +13,10 @@ const Header = () => {
             className="h-10 mr-3"
           />
           <div>
-            <h1 className="text-xl font-bold">Government of Nepal</h1>
+            <h1 className="text-xl font-bold">E-Governance Project</h1>
             <p className="text-sm">Digital Nepal Initiative</p>
           </div>
         </div>
-        <nav className="flex space-x-4">
-          <Link to="/" className="hover:underline font-medium">Home</Link>
-          <Link to="/" className="hover:underline font-medium">About</Link>
-          <Link to="/" className="hover:underline font-medium">Services</Link>
-          <Link to="/" className="hover:underline font-medium">Contact</Link>
-        </nav>
       </div>
     </header>
   );
