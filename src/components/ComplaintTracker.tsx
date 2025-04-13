@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Search, Clock } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 
 interface ComplaintTrackerProps {
   initialComplaintId?: string;
@@ -90,7 +89,7 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
     }).format(date);
   };
 
-  const handleSearch = async () => {
+  const handleSearch = () => {
     if (!complaintId.trim()) {
       toast({
         title: "Error",
@@ -103,32 +102,14 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
     setIsSearching(true);
     
     try {
-      // Get the current user
-      const { data: { user } } = await supabase.auth.getUser();
+      // Get complaints from localStorage
+      const complaints = JSON.parse(localStorage.getItem('complaints') || '[]');
       
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "You must be logged in to track complaints",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Fetch complaint from Supabase
-      const { data, error } = await supabase
-        .from('complaints')
-        .select('*')
-        .eq('id', complaintId.trim())
-        .eq('user_id', user.id)
-        .single();
-
-      if (error) {
-        throw error;
-      }
+      // Find the complaint with the matching ID
+      const foundComplaint = complaints.find((c: Complaint) => c.id === complaintId.trim());
       
-      if (data) {
-        setComplaint(data);
+      if (foundComplaint) {
+        setComplaint(foundComplaint);
       } else {
         setComplaint(null);
         toast({

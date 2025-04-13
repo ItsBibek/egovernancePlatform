@@ -1,14 +1,13 @@
 import React, { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { districts, municipalities } from "@/data/locations";
-import { supabase } from "@/integrations/supabase/client";
 
 interface ComplaintFormProps {
   onSubmitSuccess: (complaintId: string) => void;
@@ -69,26 +68,10 @@ const ComplaintForm: React.FC<ComplaintFormProps> = ({ onSubmitSuccess }) => {
     }
   };
 
-  const uploadPhoto = async (file: File) => {
-    if (!file) return null;
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random()}.${fileExt}`;
-    const filePath = `complaints/${fileName}`;
-
-    const { data, error } = await supabase.storage
-      .from('complaint-images')
-      .upload(filePath, file);
-
-    if (error) {
-      console.error('Error uploading photo:', error);
-      return null;
-    }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('complaint-images')
-      .getPublicUrl(filePath);
-
-    return publicUrl;
+  const generateSimpleId = () => {
+    const timestamp = new Date().getTime();
+    const random = Math.floor(Math.random() * 1000);
+    return `COMP-${timestamp}-${random}`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -96,46 +79,38 @@ const ComplaintForm: React.FC<ComplaintFormProps> = ({ onSubmitSuccess }) => {
     setIsSubmitting(true);
 
     try {
-      // Get the current user
-      const { data: { user } } = await supabase.auth.getUser();
+      // Generate a simple ID for the complaint
+      const complaintId = generateSimpleId();
       
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "You must be logged in to submit a complaint",
-          variant: "destructive"
-        });
-        return;
-      }
+      // Create complaint object
+      const complaint = {
+        id: complaintId,
+        full_name: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        category: formData.category,
+        district: formData.district,
+        municipality: formData.municipality,
+        location: formData.location,
+        description: formData.description,
+        priority: formData.priority,
+        photo_url: photoPreview,
+        status: 'Pending',
+        submitted_at: new Date().toISOString()
+      };
 
-      // Upload photo if exists
-      const photoUrl = formData.photo ? await uploadPhoto(formData.photo) : null;
-
-      // Insert complaint into Supabase
-      const { data, error } = await supabase
-        .from('complaints')
-        .insert({
-          full_name: formData.fullName,
-          email: formData.email,
-          phone: formData.phone,
-          category: formData.category,
-          district: formData.district,
-          municipality: formData.municipality,
-          location: formData.location,
-          description: formData.description,
-          priority: formData.priority,
-          photo_url: photoUrl,
-          user_id: user.id,
-          status: 'Pending'
-        })
-        .select('id')
-        .single();
-
-      if (error) throw error;
+      // Get existing complaints from localStorage or initialize empty array
+      const existingComplaints = JSON.parse(localStorage.getItem('complaints') || '[]');
+      
+      // Add new complaint
+      existingComplaints.push(complaint);
+      
+      // Save back to localStorage
+      localStorage.setItem('complaints', JSON.stringify(existingComplaints));
 
       toast({
         title: "Complaint Submitted Successfully",
-        description: `Your complaint has been registered with ID: ${data.id}`,
+        description: `Your complaint has been registered with ID: ${complaintId}`,
       });
       
       // Reset form
@@ -155,7 +130,7 @@ const ComplaintForm: React.FC<ComplaintFormProps> = ({ onSubmitSuccess }) => {
       setSelectedDistrict("");
       
       // Call the success callback
-      onSubmitSuccess(data.id);
+      onSubmitSuccess(complaintId);
     } catch (error) {
       console.error(error);
       toast({
