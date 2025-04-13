@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -9,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { districts, municipalities } from "@/data/locations";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ComplaintFormProps {
   onSubmitSuccess: (complaintId: string) => void;
@@ -69,34 +69,74 @@ const ComplaintForm: React.FC<ComplaintFormProps> = ({ onSubmitSuccess }) => {
     }
   };
 
+  const uploadPhoto = async (file: File) => {
+    if (!file) return null;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `complaints/${fileName}`;
+
+    const { data, error } = await supabase.storage
+      .from('complaint-images')
+      .upload(filePath, file);
+
+    if (error) {
+      console.error('Error uploading photo:', error);
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('complaint-images')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // In a real application, this would connect to a backend API
-      // For now, we'll simulate the API call with a timeout
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Get the current user
+      const { data: { user } } = await supabase.auth.getUser();
       
-      // Generate a random complaint ID for demonstration
-      const complaintId = Math.random().toString(36).substring(2, 10).toUpperCase();
-      
-      // Show success message
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to submit a complaint",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Upload photo if exists
+      const photoUrl = formData.photo ? await uploadPhoto(formData.photo) : null;
+
+      // Insert complaint into Supabase
+      const { data, error } = await supabase
+        .from('complaints')
+        .insert({
+          full_name: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          category: formData.category,
+          district: formData.district,
+          municipality: formData.municipality,
+          location: formData.location,
+          description: formData.description,
+          priority: formData.priority,
+          photo_url: photoUrl,
+          user_id: user.id,
+          status: 'Pending'
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
       toast({
         title: "Complaint Submitted Successfully",
-        description: `Your complaint has been registered with ID: ${complaintId}`,
+        description: `Your complaint has been registered with ID: ${data.id}`,
       });
-      
-      // Store in localStorage for demo purposes (in a real app, this would go to a database)
-      const complaints = JSON.parse(localStorage.getItem("complaints") || "[]");
-      complaints.push({
-        id: complaintId,
-        ...formData,
-        photo: photoPreview, // Store the preview for demo purposes
-        status: "Pending",
-        submittedAt: new Date().toISOString()
-      });
-      localStorage.setItem("complaints", JSON.stringify(complaints));
       
       // Reset form
       setFormData({
@@ -115,8 +155,9 @@ const ComplaintForm: React.FC<ComplaintFormProps> = ({ onSubmitSuccess }) => {
       setSelectedDistrict("");
       
       // Call the success callback
-      onSubmitSuccess(complaintId);
+      onSubmitSuccess(data.id);
     } catch (error) {
+      console.error(error);
       toast({
         title: "Error",
         description: "There was a problem submitting your complaint. Please try again.",

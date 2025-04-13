@@ -1,5 +1,4 @@
-
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Search, Clock } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ComplaintTrackerProps {
   initialComplaintId?: string;
@@ -15,15 +15,15 @@ interface ComplaintTrackerProps {
 
 interface Complaint {
   id: string;
-  fullName: string;
+  full_name: string;
   category: string;
   district: string;
   municipality: string;
   description: string;
   priority: string;
   status: string;
-  submittedAt: string;
-  photo?: string | null;
+  submitted_at: string;
+  photo_url?: string | null;
 }
 
 const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId = "" }) => {
@@ -79,7 +79,18 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
     }
   };
 
-  const handleSearch = () => {
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  };
+
+  const handleSearch = async () => {
     if (!complaintId.trim()) {
       toast({
         title: "Error",
@@ -91,43 +102,51 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
 
     setIsSearching(true);
     
-    // In a real app, this would be an API call
-    setTimeout(() => {
-      try {
-        const complaints = JSON.parse(localStorage.getItem("complaints") || "[]");
-        const found = complaints.find((c: Complaint) => c.id === complaintId.trim());
-        
-        if (found) {
-          setComplaint(found);
-        } else {
-          setComplaint(null);
-          toast({
-            title: "Not Found",
-            description: "No complaint found with the provided ID",
-            variant: "destructive"
-          });
-        }
-      } catch (error) {
+    try {
+      // Get the current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
         toast({
           title: "Error",
-          description: "Something went wrong while searching for the complaint",
+          description: "You must be logged in to track complaints",
           variant: "destructive"
         });
-      } finally {
-        setIsSearching(false);
+        return;
       }
-    }, 1000);
-  };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
+      // Fetch complaint from Supabase
+      const { data, error } = await supabase
+        .from('complaints')
+        .select('*')
+        .eq('id', complaintId.trim())
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+      
+      if (data) {
+        setComplaint(data);
+      } else {
+        setComplaint(null);
+        toast({
+          title: "Not Found",
+          description: "No complaint found with the provided ID",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Something went wrong while searching for the complaint",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   return (
@@ -173,7 +192,7 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row justify-between items-start gap-4">
                   <div>
-                    <h3 className="text-lg font-bold">{complaint.fullName}'s Complaint</h3>
+                    <h3 className="text-lg font-bold">{complaint.full_name}'s Complaint</h3>
                     <p className="text-gray-600">Complaint ID: {complaint.id}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -196,7 +215,7 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
                   </div>
                   <div>
                     <h4 className="font-medium text-gray-500">Submitted On</h4>
-                    <p>{formatDate(complaint.submittedAt)}</p>
+                    <p>{formatDate(complaint.submitted_at)}</p>
                   </div>
                 </div>
                 
@@ -205,12 +224,12 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
                   <p className="mt-1 p-3 border border-gray-200 rounded-md bg-gray-50">{complaint.description}</p>
                 </div>
                 
-                {complaint.photo && (
+                {complaint.photo_url && (
                   <div>
                     <h4 className="font-medium text-gray-500">Attached Photo</h4>
                     <div className="mt-2">
                       <img 
-                        src={complaint.photo} 
+                        src={complaint.photo_url} 
                         alt="Complaint evidence" 
                         className="h-48 object-cover rounded-md border border-gray-200" 
                       />
@@ -226,7 +245,7 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
                   <div className="absolute w-4 h-4 bg-nepal-blue rounded-full -left-[9px] top-0"></div>
                   <div className="mb-1 flex items-center">
                     <Clock className="h-4 w-4 mr-2 text-gray-500" />
-                    <span className="text-sm text-gray-500">{formatDate(complaint.submittedAt)}</span>
+                    <span className="text-sm text-gray-500">{formatDate(complaint.submitted_at)}</span>
                   </div>
                   <h3 className="text-lg font-medium">Complaint Submitted</h3>
                   <p className="text-gray-600">Your complaint has been received and is awaiting review.</p>
@@ -237,7 +256,7 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
                     <div className="absolute w-4 h-4 bg-nepal-blue rounded-full -left-[9px] top-0"></div>
                     <div className="mb-1 flex items-center">
                       <Clock className="h-4 w-4 mr-2 text-gray-500" />
-                      <span className="text-sm text-gray-500">{formatDate(new Date(new Date(complaint.submittedAt).getTime() + 86400000).toISOString())}</span>
+                      <span className="text-sm text-gray-500">{formatDate(new Date(new Date(complaint.submitted_at).getTime() + 86400000).toISOString())}</span>
                     </div>
                     <h3 className="text-lg font-medium">Complaint Under Review</h3>
                     <p className="text-gray-600">Your complaint is being reviewed by the concerned department.</p>
@@ -249,7 +268,7 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
                     <div className="absolute w-4 h-4 bg-nepal-blue rounded-full -left-[9px] top-0"></div>
                     <div className="mb-1 flex items-center">
                       <Clock className="h-4 w-4 mr-2 text-gray-500" />
-                      <span className="text-sm text-gray-500">{formatDate(new Date(new Date(complaint.submittedAt).getTime() + 172800000).toISOString())}</span>
+                      <span className="text-sm text-gray-500">{formatDate(new Date(new Date(complaint.submitted_at).getTime() + 172800000).toISOString())}</span>
                     </div>
                     <h3 className="text-lg font-medium">Action Taken</h3>
                     <p className="text-gray-600">Your complaint has been assigned and action is being taken.</p>
@@ -261,7 +280,7 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
                     <div className="absolute w-4 h-4 bg-green-500 rounded-full -left-[9px] top-0"></div>
                     <div className="mb-1 flex items-center">
                       <Clock className="h-4 w-4 mr-2 text-gray-500" />
-                      <span className="text-sm text-gray-500">{formatDate(new Date(new Date(complaint.submittedAt).getTime() + 259200000).toISOString())}</span>
+                      <span className="text-sm text-gray-500">{formatDate(new Date(new Date(complaint.submitted_at).getTime() + 259200000).toISOString())}</span>
                     </div>
                     <h3 className="text-lg font-medium">Resolution Complete</h3>
                     <p className="text-gray-600">Your complaint has been resolved successfully.</p>
@@ -273,7 +292,7 @@ const ComplaintTracker: React.FC<ComplaintTrackerProps> = ({ initialComplaintId 
                     <div className="absolute w-4 h-4 bg-red-500 rounded-full -left-[9px] top-0"></div>
                     <div className="mb-1 flex items-center">
                       <Clock className="h-4 w-4 mr-2 text-gray-500" />
-                      <span className="text-sm text-gray-500">{formatDate(new Date(new Date(complaint.submittedAt).getTime() + 172800000).toISOString())}</span>
+                      <span className="text-sm text-gray-500">{formatDate(new Date(new Date(complaint.submitted_at).getTime() + 172800000).toISOString())}</span>
                     </div>
                     <h3 className="text-lg font-medium">Complaint Rejected</h3>
                     <p className="text-gray-600">Your complaint has been rejected due to insufficient information or it does not fall under the jurisdiction of the concerned department.</p>
